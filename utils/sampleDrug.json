@@ -1,0 +1,44 @@
+{
+    "drug": "levo cetrizine 100",
+    "drugType": "tablet",
+    "balanceCount": 200,
+    "saleCount": 0,
+    "illType": "cold",
+    "stock": [
+      {
+        "tradeName": "Cetrizine 100",
+        "vendor": "Pranavam",
+        "balanceVendorCount": 100,
+        "expiry": [
+          {
+            "expiryDate": "Feb 2026",
+            "count": {
+              "countPerStrip": 10,
+              "stripCount": 10,
+              "mrpPerStrip": 112.50,
+              "vendorPrice": 100,
+              "mrpPerPiece": 11.20,
+              "vendorPricePerPiece": 1,
+              "balanceExpireCount": 100
+            }
+            
+          },
+          {
+            "expiryDate": "Nov 2026",
+            "count": {
+              "countPerStrip": 10,
+              "stripCount": 10,
+              "mrpPerStrip": 112.50,
+              "vendorPrice": 98,
+              "mrpPerPiece": 11.20,
+              "vendorPricePerPiece": 0.98,
+              "balanceExpireCount": 100
+            }
+            
+          }
+
+        ]
+      }
+    ],
+    "isDelete": 0
+  }

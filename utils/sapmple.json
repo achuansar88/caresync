@@ -1,0 +1,59 @@
+
+{
+    "patientId": 1,
+    "vitals": {
+      "height": 168,
+      "weight": 66,
+      "bloodPressure": 
+        {
+          "bp": "119/70",
+          "recordTime": "19-02-2025 2:00 pm"
+        }
+      ,
+      "saturation": 
+        {
+          "saturation": "98",
+          "recordTime": "19-02-2025 2:00 pm"
+        }
+      ,
+      "temperature": 
+        {
+          "temperature": "97",
+          "recordTime": "19-02-2025 2:00 pm"
+        }
+      ,
+      "pulseRate": 
+        {
+          "pulseRate": "180",
+          "recordTime": "19-02-2025 2:00 pm"
+        }
+      ,
+      "grbs": 
+        {
+          "grbs": "80",
+          "recordTime": "19-02-2025 2:00 pm",
+          "comments": "fasting"
+        }
+      ,
+      "respiratoryRate": 
+        {
+          "respiratoryRate": 20,
+          "recordTime": "19-02-2025 2:00 pm"
+        }
+      
+    },
+    "prescription": [
+      {
+        "prescription": "T-paaracetamol 500mg",
+        "medicine": "Parafine 500",
+        "dose": "4T",
+        "dateTime": "19-02-2025 2:00 pm"
+      },
+      {
+        "prescription": "T-avil 25mg",
+        "medicine": "Avil 25",
+        "dose": "1T",
+        "dateTime": "19-02-2025 2:00 pm"
+      }
+    ]
+  }

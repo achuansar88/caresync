@@ -1,0 +1,144 @@
+// handler.js
+const { v4: uuidv4 } = require("uuid");
+const AWS = require("aws-sdk");
+const dynamo = new AWS.DynamoDB.DocumentClient();
+
+module.exports.addLabTest = async (event) => {
+  const { TestName, ResultParams, Rate } = JSON.parse(event.body);
+  const TestId = uuidv4();
+
+  const item = {
+    TestId,
+    TestName,
+    ResultParams,
+    Rate,
+  };
+
+  await dynamo.put({
+    TableName: process.env.LABTESTS_TABLE,
+    Item: item,
+  }).promise();
+
+  return {
+    statusCode: 201,
+    body: JSON.stringify(item),
+  };
+};
+
+module.exports.getLabTests = async (event) => {
+  const searchParam = event.queryStringParameters?.param;
+
+  const result = await dynamo.scan({ TableName: process.env.LABTESTS_TABLE }).promise();
+  let items = result.Items;
+
+  if (searchParam) {
+    items = items.filter(test =>
+      test.ResultParams?.some(p => p.param.toLowerCase().includes(searchParam.toLowerCase()))
+    );
+  }
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify(items),
+  };
+};
+
+module.exports.updateLabTest = async (event) => {
+  const TestId = event.pathParameters.id;
+  const body = JSON.parse(event.body);
+
+  await dynamo.update({
+    TableName: process.env.LABTESTS_TABLE,
+    Key: { TestId },
+    UpdateExpression: "set TestName = :name, ResultParams = :params, Rate = :rate",
+    ExpressionAttributeValues: {
+      ":name": body.TestName,
+      ":params": body.ResultParams,
+      ":rate": body.Rate,
+    },
+  }).promise();
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ message: "Updated" }),
+  };
+};
+
+module.exports.deleteLabTest = async (event) => {
+  const TestId = event.pathParameters.id;
+
+  await dynamo.delete({
+    TableName: process.env.LABTESTS_TABLE,
+    Key: { TestId },
+  }).promise();
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ message: "Deleted" }),
+  };
+};
+
+module.exports.assignLabTestToPatient = async (event) => {
+  const { PatientId, TestId, Datetime, Rate } = JSON.parse(event.body);
+
+  const LabTestId = uuidv4();
+  const item = {
+    LabTestId,
+    PatientId,
+    TestId,
+    Datetime,
+    Rate,
+    PaymentStatus: "pending",
+    Status: "pending",
+  };
+
+  await dynamo.put({
+    TableName: process.env.PATIENT_LABTESTS_TABLE,
+    Item: item,
+  }).promise();
+
+  return {
+    statusCode: 201,
+    body: JSON.stringify(item),
+  };
+};
+
+module.exports.updateLabTestResult = async (event) => {
+  const { LabTestId, TestName, Datetime, ResultParams } = JSON.parse(event.body);
+
+  const LabTestResultId = uuidv4();
+
+  const item = {
+    LabTestResultId,
+    LabTestId,
+    TestName,
+    Datetime,
+    ResultParams,
+    Status: "completed",
+  };
+
+  await dynamo.put({
+    TableName: process.env.LABTEST_RESULTS_TABLE,
+    Item: item,
+  }).promise();
+
+  return {
+    statusCode: 201,
+    body: JSON.stringify(item),
+  };
+};
+
+module.exports.getPatientLabTests = async (event) => {
+  const { patientId } = event.pathParameters;
+
+  const result = await dynamo.scan({
+    TableName: process.env.PATIENT_LABTESTS_TABLE,
+  }).promise();
+
+  const items = result.Items.filter((item) => item.PatientId === patientId);
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify(items),
+  };
+};
