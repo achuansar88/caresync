@@ -54,7 +54,7 @@ exports.handler = async (event) => {
     // params.ProjectionExpression = undefined; // No projection, fetch all attributes
   } else {
     // Fetch only specific attributes if projectId is not present
-    params.ProjectionExpression = 'patientId, #name, age, gender, createdDateTime';
+    params.ProjectionExpression = 'patientId, #name, age, gender, createdDateTime ,lastVisits',
     params.ExpressionAttributeNames = {
       '#name': 'name', // Alias for reserved keyword 'name'
     };

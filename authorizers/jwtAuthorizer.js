@@ -4,15 +4,15 @@ const routeRoleAccess = {
   '/register': ['admin','doctors'],
   '/drugs': ['admin', 'pharmacist'],
   '/labtests': ['admin', 'labtech'],
-  '/listPatients':['admin', 'doctors'],
-  '/getPatientDetails':['admin', 'doctors'],
-  '/updatePatient':['admin', 'doctors']
+  '/listPatients':['admin', 'doctors', 'staff'],
+  '/getPatientDetails':['admin', 'doctors', 'staff'],
+  '/updatePatient':['admin', 'doctors','staff'],
+  '/labtests-patients-list':['admin', 'doctors','technician', 'staff']
   // Add more paths and their allowed roles here
 };
 
 module.exports.handler = async (event) => {
   const authHeader = event.headers?.authorization || event.headers?.Authorization;
-  console.log(event.rawPath)
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return {
       principalId: 'Unauthorized',
@@ -53,7 +53,7 @@ module.exports.handler = async (event) => {
       },
       context: {
         role: userRole,
-        email: decoded.email,
+        // email: decoded.email,
         username: decoded['cognito:username'],
       },
     };

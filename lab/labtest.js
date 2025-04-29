@@ -8,6 +8,9 @@ const LABTESTS_TABLE = process.env.LABTESTS_TABLE;
 const PATIENT_LABTESTS_TABLE = process.env.PATIENT_LABTESTS_TABLE;
 const LABTEST_RESULTS_TABLE = process.env.LABTEST_RESULTS_TABLE;
 
+const PATIENTS_TABLE = process.env.PATIENTS_TABLE;
+const LABTESTS_STATUS_GSI = 'status-index';
+
 const LABTESTS_GSI = "testName-index";
 const LABTEST_RESULTS_GSI = "patientLabTestsId-index";
 const PATIENTID_GSI = "patientId-index";
@@ -155,12 +158,15 @@ module.exports.assignLabTestToPatient = async (event) => {
         rate: fullTest?.rate ?? null // fallback to null if not found
       };
     });
+    const totalAmount = selectedLatbTests.reduce((sum, test) => sum + test.rate, 0)
     const item = {
       patientLabTestsId,
       tests : mergedTests,
       patientId: patientId.toString(),
       dateTime: formatDate(new Date().toISOString()),
-      totalAmount: selectedLatbTests.reduce((sum, test) => sum + test.rate, 0),
+      totalAmount: totalAmount,
+      balanceAmount: totalAmount,
+      paidRate: 0,
       paymentStatus: "pending",
       status: "pending",
     };
@@ -178,7 +184,7 @@ module.exports.assignLabTestToPatient = async (event) => {
 
 module.exports.confirmPatientLabTests = async (event) => {
 
-  const { patientLabTestsId, paymentStatus, discount, paidRate } = JSON.parse(event.body);
+  const { patientLabTestsId, discount, paidRate } = JSON.parse(event.body);
   const querParams = {
     TableName: PATIENT_LABTESTS_TABLE,
     KeyConditionExpression: "patientLabTestsId = :patientLabTestsId",
@@ -196,9 +202,14 @@ module.exports.confirmPatientLabTests = async (event) => {
       }
     }
   };
-
-  const paidARateCalculated = resultLabTest.Items[0].totalAmount - discount;
-  if(paidARateCalculated === paidRate) {
+  if(resultLabTest?.Items[0].paymentStatus == 'partiallypaid'  && discount != 0) {
+    return sendResponse(400, { message: `Discount can't  be added for this test.`, error: "Discount can't  added for this test."  }); 
+  }
+  const totalAmount = resultLabTest.Items[0].totalAmount;
+  const paidAmount = paidRate + resultLabTest.Items[0].paidRate;
+  const discountAmount = discount;
+  const balanceAmount = (totalAmount - discountAmount - paidAmount);
+  // if(paidARateCalculated === paidRate) {
     const labTestResult = await dynamo.batchGet(requestItems).promise();
 
   if (labTestResult?.Responses[LABTESTS_TABLE] && labTestResult?.Responses[LABTESTS_TABLE].length > 0) {
@@ -207,15 +218,16 @@ module.exports.confirmPatientLabTests = async (event) => {
     const updateStatus = await dynamo.update({
       TableName: PATIENT_LABTESTS_TABLE,
       Key: { patientLabTestsId },
-      UpdateExpression: "set paymentStatus = :paymentStatus, #status = :s, discount = :d, paidRate = :pr",
+      UpdateExpression: "set paymentStatus = :paymentStatus, #status = :s, discount = :d, paidRate = :pr, balanceAmount = :ba",
       ExpressionAttributeNames: {
         "#status": "status"
       },
       ExpressionAttributeValues: {
-        ":paymentStatus": paymentStatus,
+        ":paymentStatus": balanceAmount ==0? 'completed': paidRate==0? 'pending': "partiallypaid",
         ":s": 'ready',
-        ":d": discount,
-        ":pr": paidRate
+        ":d": discountAmount,
+        ":pr": paidAmount,
+        ":ba": balanceAmount
       },
       ReturnValues: "ALL_NEW"
     }).promise();
@@ -267,7 +279,7 @@ module.exports.confirmPatientLabTests = async (event) => {
   } else {
     return sendResponse(400, { message: "Sorry mimatch in payment", error: "Mimatch in payment" });
   }
-  }
+  // }
   
   return sendResponse(400, { message: "No tests found", error: "No teest found" });
 }
@@ -277,21 +289,21 @@ const getStatus = (resultParams) => {
   const filled = resultParams.filter(p => p.value && p.value.trim() !== "").length;
 
   if (filled === 0) return "pending";
-  if (filled === total) return "complete";
+  if (filled === total) return "completed";
   return "inprogress";
 };
 
 const getOverallStatus = (labResult) => {
   const statuses = labResult.map(test => test.status);
 
-  if (statuses.every(status => status === "complete")) {
-    return "complete";
+  if (statuses.every(status => status === "completed")) {
+    return "completed";
   } else if (statuses.some(status => status === "inprogress")) {
     return "inprogress";
   } else if (statuses.every(status => status === "pending")) {
     return "pending";
   } else {
-    // Mixed statuses (like some complete, some pending)
+    // Mixed statuses (like some completed, some pending)
     return "inprogress";
   }
 };
@@ -382,7 +394,7 @@ module.exports.updateLabTestResult = async (event) => {
     ReturnValues: "ALL_NEW"
   }).promise();
   
-  if(labSavedResult.status === "inprogress" || labSavedResult.status === "complete") {
+  if(labSavedResult.status === "inprogress" || labSavedResult.status === "completed") {
 
     await dynamo.update({
       TableName: PATIENT_LABTESTS_TABLE,
@@ -430,7 +442,7 @@ module.exports.getPatientLabTests = async (event) => {
 
   const mergedResults = await Promise.all(
     patientTestsData.Items.map(async (item) => {
-      if (item.status === 'inprogress' || item.status === 'complete') {
+      if (item.status === 'inprogress' || item.status === 'completed') {
         // Step 2: Query lab results
         const labResultData = await dynamo.query({
           TableName: LABTEST_RESULTS_TABLE,
@@ -466,7 +478,7 @@ module.exports.getPatientLabTests = async (event) => {
     })
   );
 
-  return sendResponse(200, {meessage: "Lab test reoprts", data: mergedResults});
+  return sendResponse(200, {message: "Lab test reoprts", data: mergedResults});
 };
 
 module.exports.getLabTestDetails = async (event) => {
@@ -496,7 +508,7 @@ module.exports.getLabTestDetails = async (event) => {
 
   const mergedResults = await Promise.all(
     patientTestsData.Items.map(async (item) => {
-      if (item.status === 'inprogress' || item.status === 'complete' || item.status === 'ready') {
+      if (item.status === 'inprogress' || item.status === 'completed' || item.status === 'ready') {
         // Step 2: Query lab results
         const labResultData = await dynamo.query({
           TableName: LABTEST_RESULTS_TABLE,
@@ -533,4 +545,71 @@ module.exports.getLabTestDetails = async (event) => {
   );
 
   return sendResponse(200, {message: "Lab test reoprts", data: mergedResults});
+};
+
+module.exports.getLabTestPatients = async (event) => {
+  const role = event?.requestContext?.authorizer?.lambda.role;
+
+  // Validate role
+  if (!role) {
+    return sendResponse(403, { message: 'Unauthorized access: missing role' });
+  }
+
+  // Determine statuses based on role
+  const statusesToQuery =
+    ['staff', 'admin', 'doctors'].includes(role) ? ['ready', 'inprogress', 'completed'] :
+    role === 'technician' ? ['ready', 'inprogress'] : [];
+
+  if (statusesToQuery.length === 0) {
+    return sendResponse(403, { message: 'Unauthorized role' });
+  }
+
+  try {
+    // Fetch all results for the statuses concurrently
+    const queryPromises = statusesToQuery.map((status) =>
+      dynamo.query({
+        TableName: PATIENT_LABTESTS_TABLE,
+        IndexName: LABTESTS_STATUS_GSI,
+        KeyConditionExpression: '#status = :statusVal',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: { ':statusVal': status },
+        ScanIndexForward: false
+      }).promise()
+    );
+
+    const queryResults = await Promise.all(queryPromises);
+    const allResults = queryResults.flatMap(result => result.Items || []);
+
+    // Enrich results with patient data
+    const enrichedResults = await Promise.all(
+      allResults.map(async (test) => {
+        try {
+          const patientRes = await dynamo.get({
+            TableName: PATIENTS_TABLE,
+            Key: { patientId: parseInt(test.patientId) }
+          }).promise();
+
+          const patient = patientRes.Item || {};
+          return {
+            ...test,
+            patientName: patient.name || '',
+            gender: patient.gender || '',
+            age: patient.age || ''
+          };
+        } catch (err) {
+          console.error(`Error fetching patient ${test.patientId}:`, err);
+          return test; // return original test if patient lookup fails
+        }
+      })
+    );
+
+    // Sort by dateTime descending
+    enrichedResults.sort((a, b) => new Date(b.dateTime) - new Date(a.dateTime));
+
+    return sendResponse(200, { message: "List patients", data: enrichedResults });
+
+  } catch (err) {
+    console.error('Error during patient lab test fetch:', err);
+    return sendResponse(500, { message: 'Internal Server Error' });
+  }
 };
