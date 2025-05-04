@@ -1,0 +1,394 @@
+# "org" ensures this Service is used with the correct Serverless Framework Access Key.
+org: achuansar88
+service: caresync
+frameworkVersion: "4"
+
+plugins:
+  - serverless-offline
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  stage: ${opt:stage, 'dev'}
+  region: ap-south-1
+  timeout: 400
+  httpApi:
+    cors:
+      allowedOrigins: ${self:custom.corsOrigins.${opt:stage, 'dev'}}
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+      allowCredentials: true
+    authorizers:
+      authorizer:
+        type: request
+        functionName: authorizer
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:GetItem
+            - dynamodb:UpdateItem
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:DeleteItem
+            - dynamodb:BatchGetItem
+          Resource:
+            - arn:aws:dynamodb:${self:provider.region}:${aws:accountId}:table/${self:custom.tableNames.PATIENTS_TABLE}
+            - arn:aws:dynamodb:${self:provider.region}:${aws:accountId}:table/${self:custom.tableNames.COUNTER_TABLE}
+            - arn:aws:dynamodb:${self:provider.region}:${aws:accountId}:table/${self:custom.tableNames.DRUG_TABLE}
+            - arn:aws:dynamodb:${self:provider.region}:${aws:accountId}:table/${self:custom.tableNames.PROCEDURES_TABLE}
+            - arn:aws:dynamodb:${self:provider.region}:${aws:accountId}:table/${self:custom.tableNames.SALES_TABLE}
+            - arn:aws:dynamodb:${self:provider.region}:${aws:accountId}:table/*
+
+  environment:
+    client_id: 3u3lh7r0628u66or1mpd6dn487
+    aws_region: ap-south-1
+    userpool_id: ap-south-1_LsJKNR6Ug
+    PATIENTS_TABLE: ${self:custom.tableNames.PATIENTS_TABLE}
+    COUNTER_TABLE: ${self:custom.tableNames.COUNTER_TABLE}
+    DRUG_TABLE: ${self:custom.tableNames.DRUG_TABLE}
+    PROCEDURES_TABLE: ${self:custom.tableNames.PROCEDURES_TABLE}
+    SALES_TABLE: ${self:custom.tableNames.SALES_TABLE}
+    LABTESTS_TABLE: ${self:custom.tableNames.LABTESTS_TABLE}
+    PATIENT_LABTESTS_TABLE: ${self:custom.tableNames.PATIENT_LABTESTS_TABLE}
+    LABTEST_RESULTS_TABLE: ${self:custom.tableNames.LABTEST_RESULTS_TABLE}
+    AWS_ACC: {Your aws accesskey}
+    AWS_SECR: {Your aws secret key}
+custom:
+  tableNames:
+    PATIENTS_TABLE: ${self:provider.stage}Patients
+    COUNTER_TABLE: ${self:provider.stage}CounterPatients
+    DRUG_TABLE: ${self:provider.stage}Drugs
+    PROCEDURES_TABLE: ${self:provider.stage}Procedures
+    SALES_TABLE: ${self:provider.stage}Sales
+    LABTESTS_TABLE: ${self:provider.stage}LabTests
+    PATIENT_LABTESTS_TABLE: ${self:provider.stage}PatientLabTests
+    LABTEST_RESULTS_TABLE: ${self:provider.stage}LabTestResults
+  corsOrigins:
+    dev:
+      - https://caresync-frontend.vercel.app
+      - http://localhost:4000
+    uat:
+      - https://caresync-frontend.vercel.app
+    prod:
+      - https://caresync-frontend.vercel.app
+
+functions:
+ 
+  authorizer:
+    handler: authorizers/jwtAuthorizer.handler
+  login:
+    handler: users/login.handler
+    events:
+      - httpApi:
+          path: /login
+          method: post
+  registerPatient:
+    handler: patients/registerPatient.handler
+    events:
+      - httpApi:
+          path: /register
+          method: post
+          authorizer:
+            name: authorizer
+            type: request
+
+  updatePatient:
+    handler: patients/patientDetails.handler
+    events:
+      - httpApi:
+          path: /updatePatient
+          method: post
+          authorizer:
+            name: authorizer
+            type: request
+
+  listPatients:
+    handler: patients/listPatients.handler
+    events:
+      - httpApi:
+          path: /listPatients
+          method: get
+          authorizer:
+            name: authorizer
+            type: request
+  getPatientDetails:
+     handler: patients/listPatients.getPatientDetails
+     events:
+      - httpApi:
+          path: /getPatientDetails
+          method: get
+          authorizer:
+            name: authorizer
+            type: request  
+
+  listDrugs:
+    handler: drugs/listDrugs.handler
+    events:
+      - httpApi:
+          path: /drugs
+          method: get
+
+  addDrugs:
+    handler: drugs/addDrugs.handler
+    events:
+      - httpApi:
+          path: /drugs
+          method: post
+
+  addProcedures:
+    handler: procedures/addProcedures.handler
+    events:
+      - httpApi:
+          path: /procedures
+          method: post
+
+  listProcedures:
+    handler: procedures/listprocedures.handler
+    events:
+      - httpApi:
+          path: /procedures
+          method: get
+
+  salePatient:
+    handler: sale/salePatient.handler
+    events:
+      - httpApi:
+          path: /sales
+          method: get 
+
+  saleUpdate:
+    handler: sale/updateSale.handler
+    events:
+      - httpApi:
+          path: /sales
+          method: post
+  addLabTest:
+    handler: lab/labtest.addLabTest
+    events:
+      - httpApi:
+          path: /labtests
+          method: post
+  getLabTests:
+    handler: lab/labtest.getLabTests
+    events:
+      - httpApi:
+          path: /labtests
+          method: get
+  updateLabTest:
+    handler: lab/labtest.updateLabTest
+    events:
+      - httpApi:
+          path: /labtests/{id}
+          method: put
+  deleteLabTest:
+    handler: lab/labtest.deletePatientLabTest
+    events:
+      - httpApi:
+          path: /labtests/{patientLabTestsId}
+          method: delete
+  assignLabTestToPatient:
+    handler: lab/labtest.assignLabTestToPatient
+    events:
+      - httpApi:
+          path: /patient-labtests
+          method: post
+          authorizer:
+            name: authorizer
+            type: request      
+  updateLabTestResult:
+    handler: lab/labtest.updateLabTestResult
+    events:
+      - httpApi:
+          path: /labtest-results
+          method: post
+          authorizer:
+            name: authorizer
+            type: request
+  getPatientLabTests:
+    handler: lab/labtest.getPatientLabTests
+    events:
+      - httpApi:
+          path: /patient-labtests/{patientId}
+          method: get
+  confirmPatientLabTests:
+    handler: lab/labtest.confirmPatientLabTests
+    events:
+      - httpApi:
+          path: /patient-confirmLabtests
+          method: post
+          authorizer:
+            name: authorizer
+            type: request
+  getLabTestsDetails:
+    handler: lab/labtest.getLabTestDetails
+    events:
+      - httpApi:
+          path: /labtests-details/{patientLabTestsId}
+          method: get
+  getLabTestPatients:
+    handler: lab/labtest.getLabTestPatients
+    events:
+      - httpApi:
+          path: /labtests-patients-list
+          method: get
+          authorizer:
+            name: authorizer
+            type: request
+
+resources:
+  Resources:
+    PatientsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tableNames.PATIENTS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: patientId
+            AttributeType: N
+          - AttributeName: patientName
+            AttributeType: S
+          - AttributeName: lastVisitedDateTime
+            AttributeType: S
+        KeySchema:
+          - AttributeName: patientId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: patientname-index
+            KeySchema:
+              - AttributeName: patientName
+                KeyType: HASH
+              - AttributeName: lastVisitedDateTime
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+
+    CounterTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tableNames.COUNTER_TABLE}
+        AttributeDefinitions:
+          - AttributeName: counterName
+            AttributeType: S
+        KeySchema:
+          - AttributeName: counterName
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+
+    DrugTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tableNames.DRUG_TABLE}
+        AttributeDefinitions:
+          - AttributeName: drugId
+            AttributeType: S
+          - AttributeName: drug
+            AttributeType: S
+        KeySchema:
+          - AttributeName: drugId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: drug-index
+            KeySchema:
+              - AttributeName: drug
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+
+    ProceduresTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tableNames.PROCEDURES_TABLE}
+        AttributeDefinitions:
+          - AttributeName: procedureId
+            AttributeType: S
+          - AttributeName: procedures
+            AttributeType: S
+        KeySchema:
+          - AttributeName: procedureId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: procedures-index
+            KeySchema:
+              - AttributeName: procedures
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+
+    SalesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tableNames.SALES_TABLE}
+        AttributeDefinitions:
+          - AttributeName: salesId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: salesId
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+    LabTests:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tableNames.LABTESTS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: labTestsId
+            AttributeType: S
+          - AttributeName: testName
+            AttributeType: S
+        KeySchema:
+          - AttributeName: labTestsId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: testName-index
+            KeySchema:
+              - AttributeName: testName
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+    PatientLabTests:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tableNames.PATIENT_LABTESTS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: patientLabTestsId
+            AttributeType: S
+          - AttributeName: status
+            AttributeType: S
+          - AttributeName: dateTime
+            AttributeType: S
+        KeySchema:
+          - AttributeName: patientLabTestsId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: status-index
+            KeySchema:
+              - AttributeName: status
+                KeyType: HASH
+              - AttributeName: dateTime
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+    LabTestResults:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tableNames.LABTEST_RESULTS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: labTestResultsId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: labTestResultsId
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
