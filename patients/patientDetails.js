@@ -2,13 +2,13 @@ require('dotenv').config();
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { UpdateCommand, DynamoDBDocumentClient, GetCommand } = require("@aws-sdk/lib-dynamodb");
 const { validationErros } = require('../utils/constants');
-const { sendResponse } = require('../utils');
+const { sendResponse, formatDate } = require('../utils');
 const pateintInput = require('../utils/patient.json');
 
 // const isOffline = process.env.IS_OFFLINE === 'dev';
 const region = process.env.aws_region;
-const ACCESS_KEY = process.env.AWS_ACCESS_KEY_ID;
-const SECRET_KEY = process.env.AWS_SECRET_ACCESS_KEY;
+const ACCESS_KEY = process.env.AWS_ACC;
+const SECRET_KEY = process.env.AWS_SECR;
 
 const isOffline = true;
 const client = new DynamoDBClient({
@@ -152,8 +152,13 @@ exports.handler = async (event) => {
     // if(updateData.height && updateData.weight){
     //   updateData['bmi'] =  Math.round((updateData.weight/((updateData.height/100)*(updateData.height/100))));
     // }
+    const now = formatDate(new Date().toISOString());
+    if(updateData && updateData.lastVisits && updateData.lastVisits.length) {
+      updateData.lastVisitedDateTime = now;
+      updateData.lastVisits[0].visitDateTime = now;
+    }
     if (updateData && updateData.prescription && updateData.prescription.length > 0) {
-      const currentDate = new Date().toLocaleDateString("de-DE");
+      const currentDate = formatDate(new Date().toISOString());
       updateData.prescription.forEach(prescription => {
         prescription.date = currentDate;
       });

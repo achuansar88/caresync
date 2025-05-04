@@ -8,8 +8,8 @@ const isOffline = true;
 const dynamoDB = new AWS.DynamoDB.DocumentClient({
     region: process.env.aws_region,
      credentials: {
-       accessKeyId: process.env.AWS_ACCESS_KEY_ID,   // Optional if aws-cli is configured
-       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+       accessKeyId: process.env.AWS_ACC,   // Optional if aws-cli is configured
+       secretAccessKey: process.env.AWS_SECR
      }
    });
 

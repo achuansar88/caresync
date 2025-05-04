@@ -24,17 +24,22 @@ const validateInput = (data) => {
 }
 
 const formatDate = (isoString) => {
+
     const date = new Date(isoString);
 
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
+    // Get IST offset in milliseconds (UTC+5:30 = 330 minutes)
+    const istOffsetMs = 330 * 60 * 1000;
+    const istDate = new Date(date.getTime() + istOffsetMs);
 
-   return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+    const year = istDate.getFullYear();
+    const month = String(istDate.getMonth() + 1).padStart(2, '0');
+    const day = String(istDate.getDate()).padStart(2, '0');
+    const hours = String(istDate.getHours()).padStart(2, '0');
+    const minutes = String(istDate.getMinutes()).padStart(2, '0');
+    const seconds = String(istDate.getSeconds()).padStart(2, '0');
 
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+    
 }
 
 async function decodeAndVerifyIdToken(idToken) {

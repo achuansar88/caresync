@@ -7,7 +7,10 @@ const routeRoleAccess = {
   '/listPatients':['admin', 'doctors', 'staff'],
   '/getPatientDetails':['admin', 'doctors', 'staff'],
   '/updatePatient':['admin', 'doctors','staff'],
-  '/labtests-patients-list':['admin', 'doctors','technician', 'staff']
+  '/labtests-patients-list':['admin', 'doctors','technician', 'staff'],
+  '/patient-labtests':['admin', 'doctors','staff'],
+  '/labtest-results': ['admin', 'doctors','technician', 'staff'],
+  '/patient-confirmLabtests': ['admin', 'doctors','staff'],
   // Add more paths and their allowed roles here
 };
 

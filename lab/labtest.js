@@ -16,12 +16,13 @@ const LABTEST_RESULTS_GSI = "patientLabTestsId-index";
 const PATIENTID_GSI = "patientId-index";
 module.exports.addLabTest = async (event) => {
 
-  const { testName, resultParams, rate } = JSON.parse(event.body);
+  const { testName, resultParams, rate, isOutside = false } = JSON.parse(event.body);
   const labTestsId = uuidv4();
   const message = "Lab test added successfully."
   const item = {
     labTestsId,
     testName: testName.toUpperCase(),
+    isOutside,
     resultParams,
     rate,
   };
@@ -143,9 +144,6 @@ module.exports.assignLabTestToPatient = async (event) => {
   };
 
   const labTestResult = await dynamo.batchGet(requestItems).promise();
-
-  
-
   if (labTestResult?.Responses[LABTESTS_TABLE] && labTestResult?.Responses[LABTESTS_TABLE].length > 0) {
     const selectedLatbTests = labTestResult.Responses[LABTESTS_TABLE];
 
@@ -155,7 +153,8 @@ module.exports.assignLabTestToPatient = async (event) => {
       const fullTest = selectedLatbTests.find(f => f.labTestsId === test.labTestsId);
       return {
         ...test,
-        rate: fullTest?.rate ?? null // fallback to null if not found
+        rate: fullTest?.rate ?? null, // fallback to null if not found
+        isOutside: fullTest?.isOutside ?? false
       };
     });
     const totalAmount = selectedLatbTests.reduce((sum, test) => sum + test.rate, 0)

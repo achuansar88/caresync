@@ -9,8 +9,8 @@ const pateintInput = require('../utils/patient.json');
 // const dynamoDB = new AWS.DynamoDB.DocumentClient({
 //  region: 'ap-south-1',
 //   credentials: {
-//     accessKeyId: process.env.AWS_ACCESS_KEY_ID,   // Optional if aws-cli is configured
-//     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+//     accessKeyId: process.env.AWS_ACC,   // Optional if aws-cli is configured
+//     secretAccessKey: process.env.AWS_SECR,
 //   }
 // });
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
@@ -78,7 +78,7 @@ const validateInput = (inputData) => {
 exports.handler = async (event) => {
   const message = "Patient registered successfully";
   try {
-    const { name, age, gender, phone, place, purpose, typeOfTests } = JSON.parse(event.body);
+    const { name, age, gender, phone, place, purpose } = JSON.parse(event.body);
     const errors = validateInput({ name, age, gender, phone });
     if (errors.length > 0) {
       return sendResponse(400, { message: "Error registering user", error: errors.toString() });
@@ -86,6 +86,7 @@ exports.handler = async (event) => {
     // Get next auto-incremented userId
     const patientId = await getNextPatientId()+100;
     const now = formatDate(new Date().toISOString());
+    console.log('Now',now);
     const params = {
       TableName: PATIENTS_TABLE,
       Item: {
@@ -95,9 +96,10 @@ exports.handler = async (event) => {
         gender,
         phone,
         place,
-        typeOfTests,
+        patientName: 'all',
         "createdBy":  event.requestContext.authorizer.lambda,
         "createdDateTime": now,
+        "lastVisitedDateTime": now,
         "lastVisits": [{visitDateTime: now, purpose}],
       },
     };
