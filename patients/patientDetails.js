@@ -1,6 +1,7 @@
 require('dotenv').config();
+const { v4: uuidv4 } = require('uuid');
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { UpdateCommand, DynamoDBDocumentClient, GetCommand } = require("@aws-sdk/lib-dynamodb");
+const { UpdateCommand, DynamoDBDocumentClient, GetCommand, ScanCommand } = require("@aws-sdk/lib-dynamodb");
 const { validationErros } = require('../utils/constants');
 const { sendResponse, formatDate } = require('../utils');
 const pateintInput = require('../utils/patient.json');
@@ -136,8 +137,8 @@ async function getPatientById(patientId) {
 exports.handler = async (event) => {
   const message = "Patient vitals updated successfully"
   try {
-    const { patientId, vitals } = JSON.parse(event.body);
-    const updateData = { ...vitals }
+    const { patientId, vitals, review, observation, name, phone, place, age, gender } = JSON.parse(event.body);
+    const updateData = { ...vitals };
 
     const existingPatient = await getPatientById(parseInt(patientId));
 
@@ -149,6 +150,39 @@ exports.handler = async (event) => {
     if (updateData.allergy) {
       updateData.allergy = mergeAllergyData(existingPatient.allergy, updateData.allergy);
     }
+    if (review) {
+      const reviewId = uuidv4();
+      updateData['review'] = [{ reviewId, ...review }];
+    }  
+    if (observation) {
+      const observationId = uuidv4();
+      updateData['observation'] = [ { observationId, ...observation } ];
+    }
+    if (name && phone) {
+      // Check for existing patient with same name and phone
+      const scanParams = {
+      TableName: PATIENTS_TABLE,
+      FilterExpression: "#name = :name AND #phone = :phone AND patientId <> :currentId",
+      ExpressionAttributeNames: {
+        "#name": "name",
+        "#phone": "phone"
+      },
+      ExpressionAttributeValues: {
+        ":name": name,
+        ":phone": phone,
+        ":currentId": parseInt(patientId)
+      }
+      };
+      const scanResult = await dynamoDB.send(new ScanCommand(scanParams));
+      if (scanResult.Items && scanResult.Items.length > 0) {
+      return sendResponse(400, { message: "A patient with the same name and phone already exists." });
+      }
+      updateData.name = name;
+      updateData.phone = phone;
+    }
+    if (place) updateData.place = place;
+    if (age) updateData.age = age;
+    if (gender) updateData.gender = gender; 
     // if(updateData.height && updateData.weight){
     //   updateData['bmi'] =  Math.round((updateData.weight/((updateData.height/100)*(updateData.height/100))));
     // }

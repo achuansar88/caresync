@@ -23,104 +23,16 @@ const PATIENTS_LIST_GSI = "patientname-index";
 /**
  * List Patients
  */
-// exports.handler = async (event) => {
-//   const message = "Patient listed successfully"
-
-//   // try {
-
-//   //   const scanResults = [];
-//   //   let items = await dynamoDB.scan({TableName: PATIENTS_TABLE}).promise()
-//   //   items.Items.forEach((item) => scanResults.push(item));
-
-//   //   return sendResponse(200, {
-//   //     message, data: scanResults});
-//   // } catch (error) {
-
-//   //   return sendResponse(500, { message: "Error fetching patients", error: error.message });
-
-//   // }
-
-//   const searchName = event.queryStringParameters?.name || '';
-//   const patientId = event.queryStringParameters?.patientId || '';
-//   const limit = parseInt(event.queryStringParameters?.limit || 10);
-//   const lastEvaluatedKey = event.queryStringParameters?.lastEvaluatedKey || null;
-
-//   let params = {
-//     TableName: PATIENTS_TABLE,
-//     IndexName: PATIENTS_LIST_GSI,
-//     Limit: limit,
-//     ExclusiveStartKey: lastEvaluatedKey ? JSON.parse(lastEvaluatedKey) : null,
-//   };
-//   if (patientId) {
-//     // Fetch all attributes if projectId is present
-//     // params.ProjectionExpression = undefined; // No projection, fetch all attributes
-//   } else {
-//     // Fetch only specific attributes if projectId is not present
-//     params.ProjectionExpression = 'patientId, #name, age, gender, createdDateTime ,lastVisits, lastVisitedDateTime',
-//     params.ExpressionAttributeNames = {
-//       '#name': 'name', // Alias for reserved keyword 'name'
-//     };
-//   }
-//   // if (patientId) {
-//   //   // Fetch data based on patientId
-//   //   params.KeyConditionExpression = 'patientId = :patientId';
-//   //   // params.ExpressionAttributeValues = {
-//   //   //   ':patientId': parseInt(patientId),
-//   //   // };
-//   // } else 
-//   if (searchName) {
-//     // Search by name using a filter expression
-//     params.FilterExpression = 'contains(#name, :name)';
-//     params.ExpressionAttributeNames = {
-//       '#name': 'name',
-//     };
-//     params.ExpressionAttributeValues = {
-//       ':name': searchName,
-//     };
-//   }
-
-//   try {
-//     const data = await dynamoDB.scan(params).promise();
-
-//     // Sort the data by createdDateTime
-//     const sortedItems = data.Items.sort((a, b) => {
-//       return new Date(b.createdDateTime) - new Date(a.createdDateTime);
-//     });
-
-//     //   const filteredItems = sortedItems.map(item => ({
-//     //     patientId: item.patientId,
-//     //     name: item.name,
-//     //     age: item.age,
-//     //     gender: item.gender,
-//     // }));
-
-//     return {
-//       statusCode: 200,
-//       body: JSON.stringify({
-//         items: sortedItems,
-//         lastEvaluatedKey: data.LastEvaluatedKey ? JSON.stringify(data.LastEvaluatedKey) : null,
-//       }),
-//     };
-//   } catch (error) {
-//     return {
-//       statusCode: 500,
-//       body: JSON.stringify({ error: error.message }),
-//     };
-//   } 
-// };
-
 exports.handler = async (event) => {
   const searchName = event.queryStringParameters?.name || '';
-  const limit = parseInt(event.queryStringParameters?.limit || 10);
   const lastEvaluatedKey = event.queryStringParameters?.lastEvaluatedKey;
 
-  const defaultExactName = "*"; // Optional: handle exact match fallback
+  const defaultExactName = "all"; // Optional: handle exact match fallback
 
   let params = {
     TableName: PATIENTS_TABLE,
-    Limit: limit,
     ExclusiveStartKey: lastEvaluatedKey ? JSON.parse(lastEvaluatedKey) : undefined,
-    ProjectionExpression: 'patientId, #name, age, gender, createdDateTime, lastVisits, lastVisitedDateTime',
+    ProjectionExpression: 'patientId, #name, age, gender, createdDateTime, lastVisits, lastVisitedDateTime, phone, nameLower, review, place, advice, observation',
     ExpressionAttributeNames: {
       '#name': 'name',
     },
@@ -128,20 +40,21 @@ exports.handler = async (event) => {
 
   try {
     let data;
-
     if (searchName) {
       // Scan for partial search
-      params.FilterExpression = 'contains(#name, :name)';
+      params.FilterExpression = 'contains(#nameLower, :nameLower)';
+      params.ExpressionAttributeNames['#nameLower'] = 'nameLower';
       params.ExpressionAttributeValues = {
-        ':name': searchName,
+        ':nameLower': searchName.toLowerCase(),
       };
-
       data = await dynamoDB.scan(params).promise();
 
       // Sort manually by lastVisitDateTime
       data.Items.sort((a, b) => new Date(b.lastVisitedDateTime) - new Date(a.lastVisitedDateTime));
     } else {
+      const limit = parseInt(event.queryStringParameters?.limit || 30);
       // Query for exact match and sorting
+      params.Limit = limit,
       params.IndexName = PATIENTS_LIST_GSI;
       params.KeyConditionExpression = 'patientName = :pname';
       params.ExpressionAttributeValues = {

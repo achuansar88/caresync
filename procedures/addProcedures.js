@@ -1,7 +1,7 @@
 require('dotenv').config();
 const AWS = require('aws-sdk');
 const { validationErros } = require('../utils/constants');
-const { sendResponse } = require('../utils');
+const { sendResponse, formatDate } = require('../utils');
 const { v4 } = require('uuid');
 
 // const isOffline = process.env.IS_OFFLINE === 'dev';
@@ -17,57 +17,11 @@ const dynamoDB = new AWS.DynamoDB.DocumentClient({
 
 const PROCEDURES_TABLE = process.env.PROCEDURES_TABLE;
 const PROCEDURE_GSI = "procedures-index";
-/**
- * Function to generate auto-incrementing userId
- */
 
-const validateName = (str) => /^[a-zA-Z.]+(?: [a-zA-Z.]+)*$/.test(str);
-const validateAge = (age) => {
-  // Convert input to a number
-  const number = parseFloat(age);
-  // Check if it's a valid number and within range
-  return /^[0-9]*\.?[0-9]+$/.test(age) && number >= 0.1 && number <= 150;
-};
-const validateGender = (str) => /^(male|female|other)$/i.test(str);
-const validateIndianPhoneNumber = (phone) => {
-  return /^(\+91[-\s]?|91)?[6-9]\d{9}$/.test(phone);
-};
-const validateEmail = (email) => {
-  return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email);
-};
-
-const validateInput = (inputData) => {
-  const validation = []
-
-  const { name, age, gender, phone, email } = inputData;
-  if (!name || !age || !gender) {
-    validation.push(validationErros.required);
-  }
-  if (!validateName(name)) {
-    validation.push(validationErros.nameError);
-  }
-  if (!validateAge(age)) {
-    validation.push(validationErros.ageError);
-  }
-  if (!validateGender(gender)) {
-    validation.push(validationErros.genderError);
-  }
-  if (!validateIndianPhoneNumber(phone)) {
-    validation.push(validationErros.phoneError);
-  }
-  if (!validateEmail(email)) {
-    validation.push(validationErros.emailError);
-  }
-  return validation;
-}
-
-/**
- * Register User
- */
 exports.handler = async (event) => {
   const message = "Procedure added successfully"
   try {
-    let { procedures, details, rate, isDelete  } = JSON.parse(event.body);
+    let { procedures, details, rate, isDelete, requirements  } = JSON.parse(event.body);
     const querParams = {
       TableName: PROCEDURES_TABLE,
       IndexName: PROCEDURE_GSI, // Querying the GSI
@@ -84,6 +38,7 @@ exports.handler = async (event) => {
   }
 
     const procedureId = v4();
+    const now = formatDate(new Date().toISOString()).split('T')[0];
     const params = {
       TableName: PROCEDURES_TABLE,
       Item: {
@@ -91,15 +46,16 @@ exports.handler = async (event) => {
         procedures: procedures.toUpperCase(),
         details,
         rate,
+        requirements,
         isDelete,
         "createdBy": "",
-        "createdDateTime":  new Date().toISOString(),
-        "lastUpdatedTime":  new Date().toISOString()
+        "createdDateTime":   formatDate(new Date().toISOString()),
+        "lastUpdatedTime":   formatDate(new Date().toISOString())
       },
     };
     await dynamoDB.put(params).promise();
    
-    return sendResponse(200, {
+    return sendResponse(201, {
       message, data: {
         procedureId
       },

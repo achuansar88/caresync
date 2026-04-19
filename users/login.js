@@ -24,7 +24,7 @@ module.exports.handler = async (event) => {
         };
         const response = await cognito.initiateAuth(params).promise();
         const user = await decodeAndVerifyIdToken(response.AuthenticationResult.IdToken);
-        return sendResponse(200, { message: 'Success', token: response.AuthenticationResult.IdToken, role: user['cognito:groups'][0] });
+        return sendResponse(200, { message: 'Success', token: response.AuthenticationResult.IdToken, role: user['cognito:groups'][0], name: user.name });
 
     }
     catch (error) {

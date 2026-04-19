@@ -1,7 +1,7 @@
 require('dotenv').config();
 const AWS = require('aws-sdk');
 const { validationErros } = require('../utils/constants');
-const { sendResponse } = require('../utils');
+const { sendResponse, formatDate } = require('../utils');
 const { v4 } = require('uuid');
 
 // const isOffline = process.env.IS_OFFLINE === 'dev';
@@ -84,6 +84,7 @@ exports.handler = async (event) => {
   }
 
     const drugId = v4();
+    const now = formatDate(new Date().toISOString());
     stock = stock.map(item => (
       // console.log(item)
       {
@@ -91,7 +92,7 @@ exports.handler = async (event) => {
       stockId: v4(),
       tradeName:  item['tradeName'].toUpperCase(),
       vendor: item['vendor'].toUpperCase(),
-      stockAddedDate: new Date().toISOString()
+      stockAddedDate: now
     }
   ));
     const params = {
@@ -104,8 +105,8 @@ exports.handler = async (event) => {
         stock,
         isDelete,
         "createdBy": "",
-        "createdDateTime":  new Date().toISOString(),
-        "lastUpdatedTime":  new Date().toISOString()
+        "createdDateTime":  now,
+        "lastUpdatedTime":  now
       },
     };
     await dynamoDB.put(params).promise();

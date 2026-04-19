@@ -67,29 +67,70 @@ module.exports.getLabTests = async (event) => {
   };
 
   const result = await dynamo.scan(params).promise();
-  let items = result.Items;
+  let items = result.Items || [];
+  
+  items = items.filter(test => !test.isDelete || test.isDelete === 0);
 
   return sendResponse(200, {message: "Lab tests list", data: items});
 };
 
 module.exports.updateLabTest = async (event) => {
-  const labTestsId = event.pathParameters.id;
-  const body = JSON.parse(event.body);
-  await dynamo.update({
-    TableName: LABTESTS_TABLE,
-    Key: { labTestsId },
-    UpdateExpression: "set testName = :testName, resultParams = :resultParams, rate = :rate",
-    ExpressionAttributeValues: {
-      ":testName": body.testName,
-      ":resultParams": body.resultParams,
-      ":rate": body.rate,
-    },
-  }).promise();
+  try {
 
-  return {
-    statusCode: 200,
-    body: JSON.stringify({ message: "Updated" }),
-  };
+    const labTestsId = event.pathParameters.labTestsId;
+   
+    const body = JSON.parse(event.body);
+    // First check if the item exists
+    const querParams = {
+      TableName: LABTESTS_TABLE,
+      KeyConditionExpression: "labTestsId = :labTestsId",
+      ExpressionAttributeValues: {
+        ":labTestsId": labTestsId
+      }
+    };
+    const existing = await dynamo.query(querParams).promise();
+    if (existing.Items.length === 0) {
+      return sendResponse(404, { message: "Lab test not found" });
+    }
+    const item = existing.Items[0];
+    
+    await dynamo.update({
+      TableName: LABTESTS_TABLE,
+      Key: { labTestsId, testName: item.testName },
+      UpdateExpression: "set resultParams = :resultParams, rate = :rate, isOutside = :isOutside, isDelete = :isDelete",
+      ExpressionAttributeValues: {
+        ":resultParams": body.resultParams,
+        ":rate": body.rate,
+        ":isOutside": body.isOutside || false,
+        ":isDelete": body.isDelete || 0,
+      },
+    }).promise();
+
+    return sendResponse(200, { message: "Updated" });
+  } catch (error) {
+    console.log("UpdateLabTest error:", error);
+    return sendResponse(500, { message: "Error updating test", error: error.message });
+  }
+};
+
+module.exports.deleteLabTest = async (event) => {
+  const labTestsId = event.pathParameters.labTestsId;
+  const body = JSON.parse(event.body);
+  
+  try {
+    await dynamo.update({
+      TableName: LABTESTS_TABLE,
+      Key: { labTestsId },
+      UpdateExpression: "set isDelete = :isDelete",
+      ExpressionAttributeValues: {
+        ":isDelete": body.isDelete || 1,
+      },
+    }).promise();
+    
+    return sendResponse(200, { message: "Deleted successfully" });
+  } catch (error) {
+    return sendResponse(500, { message: "Error deleting test", error: error.message });
+  }
 };
 
 module.exports.deletePatientLabTest = async (event) => {
@@ -191,7 +232,7 @@ module.exports.confirmPatientLabTests = async (event) => {
       ":patientLabTestsId": patientLabTestsId
     }
   };
-
+  
   const resultLabTest = await dynamo.query(querParams).promise();
   let labTests = resultLabTest.Items[0].tests;
   const requestItems = {
@@ -206,14 +247,16 @@ module.exports.confirmPatientLabTests = async (event) => {
   }
   const totalAmount = resultLabTest.Items[0].totalAmount;
   const paidAmount = paidRate + resultLabTest.Items[0].paidRate;
-  const discountAmount = discount;
-  const balanceAmount = (totalAmount - discountAmount - paidAmount);
+  const discountAmount = resultLabTest.Items[0].discount !== undefined  && resultLabTest.Items[0].discount !== 0 ? resultLabTest.Items[0].discount : discount;
+  const balanceAmount = (totalAmount - (discountAmount + paidAmount));
+  const resultLabTestStatus = resultLabTest?.Items[0].status;
+
+  console.log(`${totalAmount} : ${paidAmount} : ${discountAmount}: ${balanceAmount}`)
   // if(paidARateCalculated === paidRate) {
     const labTestResult = await dynamo.batchGet(requestItems).promise();
 
   if (labTestResult?.Responses[LABTESTS_TABLE] && labTestResult?.Responses[LABTESTS_TABLE].length > 0) {
     const selectedLatbTests = labTestResult.Responses[LABTESTS_TABLE];
-
     const updateStatus = await dynamo.update({
       TableName: PATIENT_LABTESTS_TABLE,
       Key: { patientLabTestsId },
@@ -222,8 +265,8 @@ module.exports.confirmPatientLabTests = async (event) => {
         "#status": "status"
       },
       ExpressionAttributeValues: {
-        ":paymentStatus": balanceAmount ==0? 'completed': paidRate==0? 'pending': "partiallypaid",
-        ":s": 'ready',
+        ":paymentStatus": balanceAmount ==0? 'completed': paidAmount==0? 'pending': "partiallypaid",
+        ":s": resultLabTestStatus == 'pending'? 'ready': resultLabTestStatus,
         ":d": discountAmount,
         ":pr": paidAmount,
         ":ba": balanceAmount
@@ -279,8 +322,6 @@ module.exports.confirmPatientLabTests = async (event) => {
     return sendResponse(400, { message: "Sorry mimatch in payment", error: "Mimatch in payment" });
   }
   // }
-  
-  return sendResponse(400, { message: "No tests found", error: "No teest found" });
 }
 
 const getStatus = (resultParams) => {
@@ -555,23 +596,35 @@ module.exports.getLabTestPatients = async (event) => {
   }
 
   // Determine statuses based on role
-  const statusesToQuery =
-    ['staff', 'admin', 'doctors'].includes(role) ? ['ready', 'inprogress', 'completed'] :
-    role === 'technician' ? ['ready', 'inprogress'] : [];
+  const statusesToQuery = ['staff', 'admin', 'doctors'].includes(role)
+    ? ['ready', 'inprogress', 'completed', 'pending']
+    : role === 'technician'
+    ? ['ready', 'inprogress', 'completed']
+    : [];
 
   if (statusesToQuery.length === 0) {
     return sendResponse(403, { message: 'Unauthorized role' });
   }
 
   try {
-    // Fetch all results for the statuses concurrently
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgoISO = sevenDaysAgo.toISOString();
+
+    // Query all relevant statuses in parallel
     const queryPromises = statusesToQuery.map((status) =>
       dynamo.query({
         TableName: PATIENT_LABTESTS_TABLE,
         IndexName: LABTESTS_STATUS_GSI,
-        KeyConditionExpression: '#status = :statusVal',
-        ExpressionAttributeNames: { '#status': 'status' },
-        ExpressionAttributeValues: { ':statusVal': status },
+        KeyConditionExpression: '#status = :statusVal AND #dt >= :sevenDaysAgo',
+        ExpressionAttributeNames: {
+          '#status': 'status',
+          '#dt': 'dateTime'
+        },
+        ExpressionAttributeValues: {
+          ':statusVal': status,
+          ':sevenDaysAgo': sevenDaysAgoISO
+        },
         ScanIndexForward: false
       }).promise()
     );
@@ -579,7 +632,7 @@ module.exports.getLabTestPatients = async (event) => {
     const queryResults = await Promise.all(queryPromises);
     const allResults = queryResults.flatMap(result => result.Items || []);
 
-    // Enrich results with patient data
+    // Enrich with patient data
     const enrichedResults = await Promise.all(
       allResults.map(async (test) => {
         try {
@@ -597,7 +650,7 @@ module.exports.getLabTestPatients = async (event) => {
           };
         } catch (err) {
           console.error(`Error fetching patient ${test.patientId}:`, err);
-          return test; // return original test if patient lookup fails
+          return test;
         }
       })
     );
@@ -605,10 +658,142 @@ module.exports.getLabTestPatients = async (event) => {
     // Sort by dateTime descending
     enrichedResults.sort((a, b) => new Date(b.dateTime) - new Date(a.dateTime));
 
-    return sendResponse(200, { message: "List patients", data: enrichedResults });
+    return sendResponse(200, { message: 'List patients', data: enrichedResults });
 
   } catch (err) {
     console.error('Error during patient lab test fetch:', err);
     return sendResponse(500, { message: 'Internal Server Error' });
   }
 };
+
+// Add this to labtest.js after the existing functions
+
+module.exports.updatePatientLabTests = async (event) => {
+  const { patientLabTestsId, newTests } = JSON.parse(event.body);
+
+  try {
+    // Get existing patient lab test record
+    const existingRecord = await dynamo.query({
+      TableName: PATIENT_LABTESTS_TABLE,
+      KeyConditionExpression: "patientLabTestsId = :patientLabTestsId",
+      ExpressionAttributeValues: {
+        ":patientLabTestsId": patientLabTestsId
+      }
+    }).promise();
+
+    console.log('existingRecord', existingRecord);
+    if (existingRecord.Items.length === 0) {
+      return sendResponse(404, { message: "Patient lab test record not found" });
+    }
+
+    const patientLabTest = existingRecord.Items[0];
+    
+    // Check if tests can be updated (status should not be completed)
+    if (patientLabTest.status === 'completed') {
+      return sendResponse(400, { message: "Cannot update completed tests" });
+    }
+
+    const requestItems = {
+      RequestItems: {
+        [LABTESTS_TABLE]: {
+          Keys: newTests.map(test => ({ labTestsId: test.labTestsId, testName: test.testName }))
+        }
+      }
+    };
+    // Keys: labTests.map((test) => ({ labTestsId: test.labTestsId, testName: test.testName }))
+    const labTestResult = await dynamo.batchGet(requestItems).promise();
+    
+    if (!labTestResult?.Responses[LABTESTS_TABLE] || labTestResult.Responses[LABTESTS_TABLE].length === 0) {
+      return sendResponse(400, { message: "Some tests not found" });
+    }
+
+    const selectedLabTests = labTestResult.Responses[LABTESTS_TABLE];
+    
+    // Filter out tests that already exist
+    const existingTestIds = patientLabTest.tests.map(t => t.labTestsId);
+    const testsToAdd = selectedLabTests.filter(test => !existingTestIds.includes(test.labTestsId));
+    
+    if (testsToAdd.length === 0) {
+      return sendResponse(400, { message: "All selected tests already exist" });
+    }
+
+    // Prepare new tests with additional data
+    const mergedNewTests = testsToAdd.map(test => ({
+      labTestsId: test.labTestsId,
+      testName: test.testName,
+      rate: test.rate,
+      isOutside: test.isOutside || false
+    }));
+
+    // Calculate new amounts
+    const newTestsTotal = testsToAdd.reduce((sum, test) => sum + test.rate, 0);
+    const updatedTotalAmount = patientLabTest.totalAmount + newTestsTotal;
+    const updatedBalanceAmount = patientLabTest.balanceAmount + newTestsTotal;
+
+    // Update patient lab tests record
+    const updatedTests = [...patientLabTest.tests, ...mergedNewTests];
+    console.log('updatedTests', updatedTests);
+    const updateParams = {
+      TableName: PATIENT_LABTESTS_TABLE,
+      Key: { patientLabTestsId },
+      UpdateExpression: "SET tests = :tests, totalAmount = :totalAmount, balanceAmount = :balanceAmount, paymentStatus = :paymentStatus",
+      ExpressionAttributeValues: {
+        ":tests": updatedTests,
+        ":totalAmount": updatedTotalAmount,
+        ":balanceAmount": updatedBalanceAmount,
+        ":paymentStatus": patientLabTest.paymentStatus == 'completed' ? 'partiallypaid' : patientLabTest.paymentStatus
+      },
+      ReturnValues: "ALL_NEW"
+    };
+    console.log('updateParams', updateParams);
+
+    const updatedRecord = await dynamo.update(updateParams).promise();
+
+    // If tests are already confirmed (status not pending), update lab results table
+    if (patientLabTest.status !== 'pending') {
+      // Get existing lab results
+      const existingResults = await dynamo.query({
+        TableName: LABTEST_RESULTS_TABLE,
+        IndexName: LABTEST_RESULTS_GSI,
+        KeyConditionExpression: "patientLabTestsId = :patientLabTestsId",
+        ExpressionAttributeValues: {
+          ":patientLabTestsId": patientLabTestsId
+        }
+      }).promise();
+
+      if (existingResults.Items.length > 0) {
+        const labResultRecord = existingResults.Items[0];
+        const newLabResults = testsToAdd.map(test => ({
+          testName: test.testName,
+          resultParams: test.resultParams.map(param => ({
+            ...param,
+            value: "",
+            updateddateTime: ""
+          })),
+          status: "pending"
+        }));
+
+        const updatedLabResults = [...labResultRecord.labResult, ...newLabResults];
+        
+        await dynamo.update({
+          TableName: LABTEST_RESULTS_TABLE,
+          Key: { labTestResultsId: labResultRecord.labTestResultsId },
+          UpdateExpression: "SET labResult = :labResult",
+          ExpressionAttributeValues: {
+            ":labResult": updatedLabResults
+          }
+        }).promise();
+      }
+    }
+
+    return sendResponse(200, { 
+      message: "Tests updated successfully", 
+      data: updatedRecord.Attributes 
+    });
+
+  } catch (error) {
+    console.error("Error updating patient lab tests:", error);
+    return sendResponse(500, { message: "Error updating tests", error: error.message });
+  }
+};
+

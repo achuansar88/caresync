@@ -70,7 +70,6 @@ async function decodeAndVerifyIdToken(idToken) {
             issuer: `https://cognito-idp.${aws_region}.amazonaws.com/${USER_POOL_ID}`,
             audience: client_id,
         });
-
         return verifiedToken;
     } catch (error) {
         console.error('Error decoding or verifying token:', error);

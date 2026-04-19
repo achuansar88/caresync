@@ -54,16 +54,16 @@ const validateInput = (inputData) => {
   if (!name || !age || !gender) {
     validation.push(validationErros.required);
   }
-  if (!validateName(name)) {
+  if (!validateName(name.trim())) {
     validation.push(validationErros.nameError);
   }
-  if (!validateAge(age)) {
+  if (!validateAge(age.trim())) {
     validation.push(validationErros.ageError);
   }
-  if (!validateGender(gender)) {
+  if (!validateGender(gender.trim())) {
     validation.push(validationErros.genderError);
   }
-  if (!validateIndianPhoneNumber(phone)) {
+  if (!validateIndianPhoneNumber(phone.trim())) {
     validation.push(validationErros.phoneError);
   }
   // if (!validateEmail(email)) {
@@ -75,23 +75,60 @@ const validateInput = (inputData) => {
 /**
  * Register User
  */
+const  trimStrings = (input) => {
+  const result = {};
+  for (const key in input) {
+    result[key] = typeof input[key] === 'string' ? input[key].trim() : input[key];
+  }
+  return result;
+}
 exports.handler = async (event) => {
   const message = "Patient registered successfully";
   try {
-    const { name, age, gender, phone, place, purpose } = JSON.parse(event.body);
+    let input = JSON.parse(event.body);
+    input = trimStrings(input);
+    const { name, age, gender, phone, place, purpose } = input;
     const errors = validateInput({ name, age, gender, phone });
     if (errors.length > 0) {
       return sendResponse(400, { message: "Error registering user", error: errors.toString() });
     }
+
+    const nameLower = name.trim().toLowerCase();
+    const trimmedPhone = phone.trim();
+
+    // Check if patient already exists
+    const existingPatient = await dynamoDB.query({
+      TableName: PATIENTS_TABLE,
+      IndexName: 'patientnamelowerphone-index', // GSI with nameLower (PK), phone (SK)
+      KeyConditionExpression: 'nameLower = :name AND phone = :phone',
+      ExpressionAttributeValues: {
+        ':name': nameLower,
+        ':phone': trimmedPhone,
+      },
+    }).promise();
+
+    if (existingPatient.Items && existingPatient.Items.length > 0) {
+      return sendResponse(200, {
+        message: "Patient already exists",
+        data: {
+          patientId: existingPatient.Items[0].patientId,
+          name: existingPatient.Items[0].name,
+          age: existingPatient.Items[0].age,
+          gender: existingPatient.Items[0].gender,
+          place: existingPatient.Items[0].place,
+          phone: existingPatient.Items[0].phone,
+        },
+      });
+    }
     // Get next auto-incremented userId
     const patientId = await getNextPatientId()+100;
     const now = formatDate(new Date().toISOString());
-    console.log('Now',now);
     const params = {
       TableName: PATIENTS_TABLE,
       Item: {
         ...pateintInput, patientId,
         name,
+        nameLower: name.toLowerCase(),
         age,
         gender,
         phone,
@@ -101,6 +138,7 @@ exports.handler = async (event) => {
         "createdDateTime": now,
         "lastVisitedDateTime": now,
         "lastVisits": [{visitDateTime: now, purpose}],
+
       },
     };
 
@@ -116,3 +154,54 @@ exports.handler = async (event) => {
     return sendResponse(500, { message: "Error registering user", error: error.message });
   }
 };
+
+// exports.handler = async () => {
+//   let lastEvaluatedKey = null;
+//   let updatedCount = 0;
+
+//   try {
+//     do {
+//       const scanParams = {
+//         TableName: PATIENTS_TABLE,
+//         ProjectionExpression: 'patientId, #name, nameLower',
+//         ExpressionAttributeNames: {
+//           '#name': 'name',
+//         },
+//         ExclusiveStartKey: lastEvaluatedKey || undefined,
+//       };
+
+//       const data = await dynamoDB.scan(scanParams).promise();
+
+//       for (const item of data.Items) {
+//         const correctLower = item.name?.toLowerCase() || '';
+
+//         if (!item.nameLower || item.nameLower !== correctLower) {
+//           const updateParams = {
+//             TableName: PATIENTS_TABLE,
+//             Key: { patientId: item.patientId },
+//             UpdateExpression: 'SET nameLower = :nameLower',
+//             ExpressionAttributeValues: {
+//               ':nameLower': correctLower,
+//             },
+//           };
+
+//           await dynamoDB.update(updateParams).promise();
+//           updatedCount++;
+//         }
+//       }
+
+//       lastEvaluatedKey = data.LastEvaluatedKey;
+//     } while (lastEvaluatedKey);
+
+//     return {
+//       statusCode: 200,
+//       body: JSON.stringify({ message: `Updated ${updatedCount} patients with nameLower.` }),
+//     };
+//   } catch (error) {
+//     console.error('Error updating patients:', error);
+//     return {
+//       statusCode: 500,
+//       body: JSON.stringify({ error: error.message }),
+//     };
+//   }
+// };
