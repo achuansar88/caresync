@@ -212,29 +212,29 @@ module.exports.handler = async (event) => {
     // Handle payments (cardPayment, upiPayment, cashPayment can be provided individually or together)
     // body.paidAmount is the new payment amount for this transaction only
     // body.cashPaymentAmount, body.onlinePaymentAmount, body.cardPaymentAmount are cumulative totals
-    const newPaymentAmount = Number(body.paidAmount) || 0;
+    const newPaymentAmount = Math.floor(Number(body.paidAmount) || 0);
 
     // For payment methods, the frontend sends cumulative values
     // So we use them directly instead of adding to existing
     if (newPaymentAmount > 0) {
-      invoice.paidAmount = Number(invoice.paidAmount || 0) + newPaymentAmount;
-      invoice.cardPaymentAmount = Number(body.cardPaymentAmount) || 0;
-      invoice.onlinePaymentAmount = Number(body.onlinePaymentAmount) || 0;
-      invoice.cashPaymentAmount = Number(body.cashPaymentAmount) || 0;
+      invoice.paidAmount = Math.floor(Number(invoice.paidAmount || 0) + newPaymentAmount);
+      invoice.cardPaymentAmount = Math.floor(Number(body.cardPaymentAmount) || 0);
+      invoice.onlinePaymentAmount = Math.floor(Number(body.onlinePaymentAmount) || 0);
+      invoice.cashPaymentAmount = Math.floor(Number(body.cashPaymentAmount) || 0);
     }
 
-    // Compute balance and paymentStatus
-    const total = Number(invoice.totalAmount) || 0;
-    const paid = Number(invoice.paidAmount) || 0;
-    let balance = total - paid;
+    // Compute balance and paymentStatus (round down all amounts)
+    const total = Math.floor(Number(invoice.totalAmount) || 0);
+    const paid = Math.floor(Number(invoice.paidAmount) || 0);
+    let balance = Math.floor(total - paid);
     if (balance <= 0) {
       invoice.balanceAmount = 0;
       invoice.paymentStatus = 2; // fully paid
     } else if (paid > 0) {
-      invoice.balanceAmount = balance;
+      invoice.balanceAmount = Math.floor(balance);
       invoice.paymentStatus = 1; // partial
     } else {
-      invoice.balanceAmount = total;
+      invoice.balanceAmount = Math.floor(total);
       invoice.paymentStatus = 0; // unpaid
     }
 

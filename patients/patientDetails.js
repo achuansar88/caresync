@@ -20,10 +20,6 @@ const client = new DynamoDBClient({
   },
 });
 const dynamoDB = DynamoDBDocumentClient.from(client);
-// const dynamoDB = new AWS.DynamoDB.DocumentClient({
-//   region: isOffline ? 'localhost' : 'ap-south-1',
-//   endpoint: isOffline ? 'http://localhost:8000' : undefined,
-// });
 const validateHeight = (height) => {
   // Convert input to a number
   const number = parseFloat(height);

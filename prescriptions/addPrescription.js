@@ -25,6 +25,7 @@ module.exports.handler = async (event) => {
     if (!userId || !medicineId || !medicineName || !medicineType || !frequency || !daysPrescribed || !dosage || !prescribedBy || !prescribedDate) {
       return sendResponse(400, 'Missing required fields');
     }
+    const now = formatDate(new Date().toISOString());
     const prescriptionId = uuidv4();
     const item = {
       prescriptionId,
@@ -34,12 +35,12 @@ module.exports.handler = async (event) => {
       medicineType,
       frequency,
       daysPrescribed,
-      prescribedDate: formatDate(prescribedDate).split('T')[0],
+      prescribedDate: now.split('T')[0],
       dosage,
       additionalInfo: additionalInfo || null,
       prescribedBy,
-      createdAt: formatDate(new Date().toISOString()),
-      updatedAt: formatDate(new Date().toISOString())
+      createdAt: now,
+      updatedAt: now
     };
 
     await dynamoDb.put({

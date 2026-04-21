@@ -7,11 +7,21 @@ module.exports.handler = async (event) => {
   try {
     const stockId = event.pathParameters.stockId;
     const body = JSON.parse(event.body);
+    
+    if (!stockId) {
+      throw new Error('Stock ID is required');
+    }
+    
+    if (!body.medicineType) {
+      throw new Error('medicineType is required');
+    }
+    
     const medicineType = body.medicineType.toLowerCase();
-    validateStock(body, medicineType);
+    const actualMedicineType = medicineType;
+    
+    const stockTableName = getStockTableName(actualMedicineType);
     
     // Get existing stock to calculate quantity difference
-    const stockTableName = getStockTableName(medicineType);
     const existingStock = await dynamodb.get({
       TableName: stockTableName,
       Key: { stockId }
@@ -21,92 +31,143 @@ module.exports.handler = async (event) => {
       throw new Error('Stock not found');
     }
     
-    // Prepare update expression
-    const updateExpression = [
-      'SET tradeName = :tradeName',
-      'expiryDate = :expiryDate',
-      'purchaseDate = :purchaseDate',
-      'lastUpdatedDate = :updated',
-      'rate = :rate',
-      'totalQuantity = :totalQuantity',
-      'totalRate = :totalRate',
-      'balanceQuantity = :balanceQuantity'
-    ];
+    // Build dynamic update expression only for provided fields
+    const updates = [];
+    const values = {};
+    const expNames = {};
     
-    const expressionAttributeValues = {
-      ':tradeName': body.tradeName,
-      ':expiryDate': formatDate(body.expiryDate),
-      ':purchaseDate': formatDate(body.purchaseDate).split('T')[0],
-      ':updated': formatDate(new Date().toISOString()),
-      ':rate': body.rate,
-      ':totalQuantity': body.totalQuantity,
-      ':totalRate': body.totalRate,
-      ':balanceQuantity': body.balanceQuantity
-    };
+    if (body.tradeName !== undefined) {
+      updates.push('#tn = :tradeName');
+      values[':tradeName'] = body.tradeName;
+      expNames['#tn'] = 'tradeName';
+    }
+    if (body.vendorName !== undefined) {
+      updates.push('vendorName = :vendorName');
+      values[':vendorName'] = body.vendorName;
+    }
+    if (body.vendorId !== undefined) {
+      updates.push('vendorId = :vendorId');
+      values[':vendorId'] = body.vendorId;
+    }
+    if (body.expiryDate !== undefined) {
+      updates.push('expiryDate = :expiryDate');
+      values[':expiryDate'] = formatDate(body.expiryDate);
+    }
+    if (body.purchaseDate !== undefined) {
+      updates.push('purchaseDate = :purchaseDate');
+      values[':purchaseDate'] = formatDate(body.purchaseDate).split('T')[0];
+    }
+    if (body.rate !== undefined) {
+      updates.push('rate = :rate');
+      values[':rate'] = body.rate;
+    }
+    if (body.totalQuantity !== undefined) {
+      updates.push('totalQuantity = :totalQuantity');
+      values[':totalQuantity'] = body.totalQuantity;
+    }
+    if (body.totalRate !== undefined) {
+      updates.push('totalRate = :totalRate');
+      values[':totalRate'] = body.totalRate;
+    }
+    if (body.gstPercent !== undefined) {
+      updates.push('gstPercent = :gstPercent');
+      values[':gstPercent'] = body.gstPercent;
+    }
+    if (body.balanceQuantity !== undefined) {
+      updates.push('balanceQuantity = :balanceQuantity');
+      values[':balanceQuantity'] = body.balanceQuantity;
+    }
+    if (body.mrpPerItem !== undefined) {
+      updates.push('mrpPerItem = :mrpPerItem');
+      values[':mrpPerItem'] = body.mrpPerItem;
+    }
+    if (body.ratePerItem !== undefined) {
+      updates.push('ratePerItem = :ratePerItem');
+      values[':ratePerItem'] = body.ratePerItem;
+    }
     
-    // Add type-specific fields to update
-    switch (medicineType) {
-      case 'tablet':
-        updateExpression.push('totalStrips = :totalStrips');
-        updateExpression.push('countPerStrip = :countPerStrip');
-        updateExpression.push('mrpPerStrip = :mrpPerStrip');
-        expressionAttributeValues[':totalStrips'] = body.totalStrips;
-        expressionAttributeValues[':countPerStrip'] = body.countPerStrip;
-        expressionAttributeValues[':mrpPerStrip'] = body.mrpPerStrip;
-        break;
-      case 'syrup':
-        updateExpression.push('totalBox = :totalBox');
-        updateExpression.push('bottlePerBox = :bottlePerBox');
-        updateExpression.push('mrpPerBottle = :mrpPerBottle');
-        expressionAttributeValues[':totalBox'] = body.totalBox;
-        expressionAttributeValues[':bottlePerBox'] = body.bottlePerBox;
-        expressionAttributeValues[':mrpPerBottle'] = body.mrpPerBottle;
-        break;
-      case 'drops':
-        updateExpression.push('totalBox = :totalBox');
-        updateExpression.push('dropsPerBox = :dropsPerBox');
-        updateExpression.push('mrpPerDrops = :mrpPerDrops');
-        expressionAttributeValues[':totalBox'] = body.totalBox;
-        expressionAttributeValues[':dropsPerBox'] = body.dropsPerBox;
-        expressionAttributeValues[':mrpPerDrops'] = body.mrpPerDrops;
-        break;
-      case 'respules':
-        updateExpression.push('totalBox = :totalBox');
-        updateExpression.push('respulesPerBox = :respulesPerBox');
-        updateExpression.push('mrpPerRespules = :mrpPerRespules');
-        expressionAttributeValues[':totalBox'] = body.totalBox;
-        expressionAttributeValues[':respulesPerBox'] = body.respulesPerBox;
-        expressionAttributeValues[':mrpPerRespules'] = body.mrpPerRespules;
-        break;
-      case 'injection':
-        updateExpression.push('totalInjectionsSheet = :totalInjectionsSheet');
-        updateExpression.push('injectionsPerSheet = :injectionsPerSheet');
-        updateExpression.push('mrpPerInjections = :mrpPerInjections');
-        expressionAttributeValues[':totalInjectionsSheet'] = body.totalInjectionsSheet;
-        expressionAttributeValues[':injectionsPerSheet'] = body.injectionsPerSheet;
-        expressionAttributeValues[':mrpPerInjections'] = body.mrpPerInjections;
-        break;
-      case 'ointment':
-        updateExpression.push('totalBox = :totalBox');
-        updateExpression.push('ointmentPerBox = :ointmentPerBox');
-        updateExpression.push('mrpPerOintment = :mrpPerOintment');
-        expressionAttributeValues[':totalBox'] = body.totalBox;
-        expressionAttributeValues[':ointmentPerBox'] = body.ointmentPerBox;
-        expressionAttributeValues[':mrpPerOintment'] = body.mrpPerOintment;
-        break;
+    // Type-specific fields
+    if (body.totalStrips !== undefined) {
+      updates.push('totalStrips = :totalStrips');
+      values[':totalStrips'] = body.totalStrips;
+    }
+    if (body.countPerStrip !== undefined) {
+      updates.push('countPerStrip = :countPerStrip');
+      values[':countPerStrip'] = body.countPerStrip;
+    }
+    if (body.mrpPerStrip !== undefined) {
+      updates.push('mrpPerStrip = :mrpPerStrip');
+      values[':mrpPerStrip'] = body.mrpPerStrip;
+    }
+    if (body.totalBox !== undefined) {
+      updates.push('totalBox = :totalBox');
+      values[':totalBox'] = body.totalBox;
+    }
+    if (body.bottlePerBox !== undefined) {
+      updates.push('bottlePerBox = :bottlePerBox');
+      values[':bottlePerBox'] = body.bottlePerBox;
+    }
+    if (body.mrpPerBottle !== undefined) {
+      updates.push('mrpPerBottle = :mrpPerBottle');
+      values[':mrpPerBottle'] = body.mrpPerBottle;
+    }
+    if (body.dropsPerBox !== undefined) {
+      updates.push('dropsPerBox = :dropsPerBox');
+      values[':dropsPerBox'] = body.dropsPerBox;
+    }
+    if (body.mrpPerDrops !== undefined) {
+      updates.push('mrpPerDrops = :mrpPerDrops');
+      values[':mrpPerDrops'] = body.mrpPerDrops;
+    }
+    if (body.respulesPerBox !== undefined) {
+      updates.push('respulesPerBox = :respulesPerBox');
+      values[':respulesPerBox'] = body.respulesPerBox;
+    }
+    if (body.mrpPerRespule !== undefined) {
+      updates.push('mrpPerRespule = :mrpPerRespule');
+      values[':mrpPerRespule'] = body.mrpPerRespule;
+    }
+    if (body.totalInjectionsSheet !== undefined) {
+      updates.push('totalInjectionsSheet = :totalInjectionsSheet');
+      values[':totalInjectionsSheet'] = body.totalInjectionsSheet;
+    }
+    if (body.injectionsPerSheet !== undefined) {
+      updates.push('injectionsPerSheet = :injectionsPerSheet');
+      values[':injectionsPerSheet'] = body.injectionsPerSheet;
+    }
+    if (body.mrpPerInjections !== undefined) {
+      updates.push('mrpPerInjections = :mrpPerInjections');
+      values[':mrpPerInjections'] = body.mrpPerInjections;
+    }
+    if (body.ointmentPerBox !== undefined) {
+      updates.push('ointmentPerBox = :ointmentPerBox');
+      values[':ointmentPerBox'] = body.ointmentPerBox;
+    }
+    if (body.mrpPerTube !== undefined) {
+      updates.push('mrpPerTube = :mrpPerTube');
+      values[':mrpPerTube'] = body.mrpPerTube;
+    }
+    
+    // Always update lastUpdatedDate
+    updates.push('lastUpdatedDate = :updated');
+    values[':updated'] = formatDate(new Date().toISOString());
+    
+    if (updates.length === 1) {
+      throw new Error('No fields to update');
     }
     
     // Update stock
     const updatedStock = await dynamodb.update({
       TableName: stockTableName,
       Key: { stockId },
-      UpdateExpression: 'SET ' + updateExpression.join(', '),
-      ExpressionAttributeValues: expressionAttributeValues,
+      UpdateExpression: 'SET ' + updates.join(', '),
+      ExpressionAttributeValues: values,
+      ExpressionAttributeNames: Object.keys(expNames).length > 0 ? expNames : undefined,
       ReturnValues: 'ALL_NEW'
     }).promise();
     
-    // Update medicine balance quantity if total quantity changed
-    if (existingStock.Item.totalQuantity !== body.totalQuantity) {
+// Update medicine balance quantity if total quantity changed and medicineId is provided
+    if (body.totalQuantity !== undefined && body.medicineId && existingStock.Item.totalQuantity !== body.totalQuantity) {
       const quantityDiff = body.totalQuantity - existingStock.Item.totalQuantity;
       const medicine = await dynamodb.get({
         TableName: 'TABLE_MEDICINE',

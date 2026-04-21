@@ -41,11 +41,11 @@ module.exports.handler = async (event) => {
       patient:  patientObject,
       procedures: body.procedureArray || [],
       medicines: body.medicinesArray || [],
-      doctorFee: body.doctorFee || 0,
+      doctorFee: Math.floor(body.doctorFee || 0),
       paymentStatus: 0, // created
       returnedMedicines: [],
       miscellaneous: body.miscellaneous || [],
-      discount: body.discount || 0,
+      discount: Math.floor(body.discount || 0),
       totalAmount: 0,
       createdDateTime: now,
       lastUpdatedDateTime: now,
@@ -56,9 +56,9 @@ module.exports.handler = async (event) => {
       cardPaymentAmount: 0
     };
 
-    // Calculate total amount
-    invoice.totalAmount = calculateTotalAmount(invoice);
-    invoice.balanceAmount = invoice.totalAmount;
+    // Calculate total amount (round down)
+    invoice.totalAmount = Math.floor(calculateTotalAmount(invoice));
+    invoice.balanceAmount = Math.floor(invoice.totalAmount);
 
     // Update stock for medicines
     if (invoice.medicines.length > 0) {

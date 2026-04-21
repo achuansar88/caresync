@@ -19,6 +19,7 @@ module.exports.handler = async (event) => {
     const medicineId = queryParams.medicineId?.trim();
     const limit = parseInt(queryParams.limit || '0', 10);
     const isPaginated = Boolean(queryParams.limit || queryParams.lastEvaluatedKey);
+    const restockFilter = queryParams.restockFilter === 'true';
 
     if (medicineId) {
       const result = await dynamodb.get({
@@ -49,6 +50,10 @@ module.exports.handler = async (event) => {
     if (medicineType) {
       scanParams.FilterExpression += ' AND medicineType = :type';
       scanParams.ExpressionAttributeValues[':type'] = medicineType.toLowerCase();
+    }
+
+    if (restockFilter) {
+      scanParams.FilterExpression += ' AND balanceQuantity <= minStockCount';
     }
 
     if (limit > 0) {

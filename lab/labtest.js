@@ -115,15 +115,20 @@ module.exports.updateLabTest = async (event) => {
 
 module.exports.deleteLabTest = async (event) => {
   const labTestsId = event.pathParameters.labTestsId;
-  const body = JSON.parse(event.body);
+  const queryParams = event.queryStringParameters || {};
+  const testName = queryParams.testName || '';
   
   try {
+    if (!testName) {
+      return sendResponse(400, { message: "testName is required" });
+    }
+    
     await dynamo.update({
       TableName: LABTESTS_TABLE,
-      Key: { labTestsId },
+      Key: { labTestsId, testName },
       UpdateExpression: "set isDelete = :isDelete",
       ExpressionAttributeValues: {
-        ":isDelete": body.isDelete || 1,
+        ":isDelete": 1,
       },
     }).promise();
     

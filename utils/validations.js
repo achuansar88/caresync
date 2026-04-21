@@ -32,7 +32,11 @@ module.exports = {
     
     return true;
   },
-  validateStock: (stock, medicineType) => {
+  validateStock: (stock, medicineType, isPartialUpdate = false) => {
+    if (isPartialUpdate) {
+      return true;
+    }
+    
     if (!stock.medicineId || !stock.vendorId || !stock.tradeName || !stock.expiryDate || 
         !stock.purchaseDate || !stock.rate || !stock.totalRate || !stock.gstPercent) {
       throw new Error('Missing required fields for stock');

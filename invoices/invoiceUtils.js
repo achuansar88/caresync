@@ -2,32 +2,32 @@ const { dynamodb } = require('../utils/db');
 const { getStockTableName } = require('../utils/db');
 const { formatDate } = require('../utils');
 
-// Calculate total amount for invoice
+// Calculate total amount for invoice (round down all amounts)
 const calculateTotalAmount = (invoice) => {
   let total = 0;
   
   // Calculate medicines total
   if (invoice.medicines && invoice.medicines.length > 0) {
-    total += invoice.medicines.reduce((sum, medicine) => sum + (medicine.amount || 0), 0);
+    total += invoice.medicines.reduce((sum, medicine) => sum + Math.floor(medicine.amount || 0), 0);
   }
  
   // Calculate procedures total
   if (invoice.procedures && invoice.procedures.length > 0) {
-    total += invoice.procedures.reduce((sum, procedure) => sum + (procedure.amount || 0), 0);
+    total += invoice.procedures.reduce((sum, procedure) => sum + Math.floor(procedure.amount || 0), 0);
   }
-  
+   
   // Calculate miscellaneous total
   if (invoice.miscellaneous && invoice.miscellaneous.length > 0) {
-    total += invoice.miscellaneous.reduce((sum, item) => sum + (item.amount || 0), 0);
+    total += invoice.miscellaneous.reduce((sum, item) => sum + Math.floor(item.amount || 0), 0);
   }
-  
-  // Add doctor fee
-  total += invoice.doctorFee || 0;
-  
-  // Apply discount
-  total -= invoice.discount || 0;
-  
-  return Math.max(0, total);
+   
+  // Add doctor fee (round down)
+  total += Math.floor(invoice.doctorFee || 0);
+   
+  // Apply discount (round down)
+  total -= Math.floor(invoice.discount || 0);
+   
+  return Math.floor(Math.max(0, total));
 };
 
 // Update stock when medicines are added to invoice
