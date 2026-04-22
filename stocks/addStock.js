@@ -44,7 +44,7 @@ module.exports.handler = async (event) => {
       lastUpdatedDate: now,
       // store original totalRate and gstPercent; totalRate will be adjusted to include GST
       totalRateOriginal: Number(body.totalRate) || 0,
-      gstPercent: Number(body.gstPercent) || 0
+      gstPercent: Number(body.gstPercent) || 1
     };
    
     // common helpers

@@ -37,62 +37,65 @@ module.exports = {
       return true;
     }
     
-    if (!stock.medicineId || !stock.vendorId || !stock.tradeName || !stock.expiryDate || 
-        !stock.purchaseDate || !stock.rate || !stock.totalRate || !stock.gstPercent) {
+    const isMissing = (val) => val === undefined || val === null || val === '';
+    if (isMissing(stock.medicineId) || isMissing(stock.vendorId) || isMissing(stock.tradeName) || 
+        isMissing(stock.expiryDate) || isMissing(stock.purchaseDate) || isMissing(stock.totalRate) || 
+        isMissing(stock.gstPercent)) {
       throw new Error('Missing required fields for stock');
     }
     
     // Type-specific validations
     switch (medicineType.toLowerCase()) {
       case 'tablet':
-        if (!stock.totalStrips || !stock.countPerStrip || !stock.mrpPerStrip) {
+        if (isMissing(stock.totalStrips) || isMissing(stock.countPerStrip) || isMissing(stock.mrpPerStrip)) {
           throw new Error('For tablets, totalStrips, countPerStrip and mrpPerStrip are required');
         }
         break;
       case 'syrup':
-        if (!stock.totalBox || !stock.bottlePerBox || !stock.mrpPerBottle) {
+        if (isMissing(stock.totalBox) || isMissing(stock.bottlePerBox) || isMissing(stock.mrpPerBottle)) {
           throw new Error('For syrup, totalBox, bottlePerBox and mrpPerBottle are required');
         }
         break;
       case 'drops':
-        if (!stock.totalBox || !stock.dropsPerBox || !stock.mrpPerDrops) {
+        if (isMissing(stock.totalBox) || isMissing(stock.dropsPerBox) || isMissing(stock.mrpPerDrops)) {
           throw new Error('For drops, totalBox, dropsPerBox and mrpPerDrops are required');
         }
         break;
       case 'respules':
-        if (!stock.totalBox || !stock.respulesSheetPerBox  || !stock.respulesItemPerSheet || !stock.mrpPerRespule) {
+        if (isMissing(stock.totalBox) || isMissing(stock.respulesSheetPerBox) || isMissing(stock.respulesItemPerSheet) || isMissing(stock.mrpPerRespule)) {
           throw new Error('For respules, totalBox, respulesSheetPerBox, respulesItemPerSheet and mrpPerRespules are required');
         }
         break;
       case 'injection':
-        if (!stock.totalInjectionsSheet || !stock.injectionsPerSheet || !stock.mrpPerInjections) {
+        if (isMissing(stock.totalInjectionsSheet) || isMissing(stock.injectionsPerSheet) || isMissing(stock.mrpPerInjections)) {
           throw new Error('For injections, totalInjectionsSheet, injectionsPerSheet and mrpPerInjections are required');
         }
         break;
       case 'ointment':
-        if (!stock.totalBox || !stock.tubePerBox || !stock.mrpPerTube) {
+        if (isMissing(stock.totalBox) || isMissing(stock.tubePerBox) || isMissing(stock.mrpPerTube)) {
           throw new Error('For ointment, totalBox, tubePerBox and mrpPerTube are required');
         }
         break;
       case 'surgicals':
-        if (!stock.totalSurgicalBox || !stock.piecesPerBox || !stock.mrpPerPiece) {
+        if (isMissing(stock.totalSurgicalBox) || isMissing(stock.piecesPerBox) || isMissing(stock.mrpPerPiece)) {
           throw new Error('For surgicals, totalSurgicalBox, piecesPerBox and mrpPerPiece are required');
         }
         break;
       case 'fluids':
-        if (!stock.totalFluidBox || !stock.fluidsPerBox || !stock.mrpPerFluid) {
+        if (isMissing(stock.totalFluidBox) || isMissing(stock.fluidsPerBox) || isMissing(stock.mrpPerFluid)) {
           throw new Error('For fluids, totalFluidBox, fluidsPerBox and mrpPerFluid are required');
         }
-      break;
+        break;
       case 'capsule':
-         if (!stock.totalStrips || !stock.countPerStrip || !stock.mrpPerStrip) {
+        if (isMissing(stock.totalStrips) || isMissing(stock.countPerStrip) || isMissing(stock.mrpPerStrip)) {
           throw new Error('For capsule, totalStrips, countPerStrip and mrpPerStrip are required');
         }
-      break;
+        break;
       case 'other':
-        if (!stock.totalQuantity || !stock.mrpPerItem) {
+        if (isMissing(stock.totalQuantity) || isMissing(stock.mrpPerItem)) {
           throw new Error('For other medicine types, totalQuantity and mrpPerItem are required');
         }
+        break;
       default:
         throw new Error(`Invalid medicine type: ${medicineType}`);
     }
