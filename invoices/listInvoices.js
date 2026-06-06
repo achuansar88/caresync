@@ -6,6 +6,49 @@ const TABLE_PATIENTS = process.env.PATIENTS_TABLE || `${process.env.stage}Patien
 const TABLE_MEDICINE = process.env.MEDICINE_TABLE || `${process.env.stage}MedicineTable`;
 
 const isNumeric = (v) => /^-?\d+(\.\d+)?$/.test(String(v));
+const parseLimit = (value) => {
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
+};
+
+const parseOffsetToken = (token) => {
+  if (!token) return 0;
+
+  try {
+    const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf8'));
+    const offset = parseInt(decoded.offset, 10);
+    return Number.isFinite(offset) && offset >= 0 ? offset : 0;
+  } catch (e) {
+    console.error('Invalid lastEvaluatedKey:', e);
+    return 0;
+  }
+};
+
+const createOffsetToken = (offset) =>
+  Buffer.from(JSON.stringify({ offset })).toString('base64');
+
+const sortByCreatedDateTimeDesc = (items) => items.sort((a, b) =>
+  new Date(b.createdDateTime).getTime() - new Date(a.createdDateTime).getTime()
+);
+
+const scanAllInvoices = async (params) => {
+  const items = [];
+  let lastKey;
+
+  do {
+    const pageParams = { ...params };
+    delete pageParams.Limit;
+    if (lastKey) {
+      pageParams.ExclusiveStartKey = lastKey;
+    }
+
+    const result = await dynamodb.scan(pageParams).promise();
+    items.push(...(result.Items || []));
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey);
+
+  return items;
+};
 
 const getPatientInfo = async (patientIdVal) => {
   if (patientIdVal === undefined || patientIdVal === null) return null;
@@ -43,6 +86,7 @@ module.exports.handler = async (event) => {
       limit = 30,
       lastEvaluatedKey 
     } = event.queryStringParameters || {}
+    const pageLimit = parseLimit(limit);
 
     // If invoiceId provided -> return full invoice details with patient and medicine info
     if (invoiceId) {
@@ -226,7 +270,7 @@ module.exports.handler = async (event) => {
         ExpressionAttributeValues: {
           ':paymentStatus': parseInt(paymentStatus)
         },
-        Limit: limit,
+        Limit: pageLimit,
         ScanIndexForward: false
       };
 
@@ -266,7 +310,7 @@ module.exports.handler = async (event) => {
           ':startDate': startDate,
           ':endDate': endDate
         },
-        Limit: limit,
+        Limit: pageLimit,
         ScanIndexForward: false
       };
       
@@ -274,20 +318,9 @@ module.exports.handler = async (event) => {
       return success(result.Items);
       
     } else {
-      // Scan all invoices (with limit for safety)
-      queryParams.Limit = parseInt(limit);
-      
-      // Handle pagination
-      if (lastEvaluatedKey) {
-        try {
-          queryParams.ExclusiveStartKey = JSON.parse(Buffer.from(lastEvaluatedKey, 'base64').toString('utf8'));
-        } catch (e) {
-          console.error('Invalid lastEvaluatedKey:', e);
-        }
-      }
-      
-      // For scan operations, we need to handle filters differently
-      let result;
+      // Scan all invoices before sorting. DynamoDB Scan is unordered, so applying
+      // Limit before sorting can miss newer invoices.
+      let items;
       
       // Apply paymentStatus filter if provided
       if (paymentStatus !== undefined && paymentStatus !== null && paymentStatus !== '') {
@@ -300,15 +333,12 @@ module.exports.handler = async (event) => {
       // If there's a search query, we need to fetch more and filter
       if (search) {
         const searchLower = search.toLowerCase();
-        // Fetch enough items to filter (higher limit for search)
-        queryParams.Limit = parseInt(limit) * 5;
-        
-        result = await dynamodb.scan(queryParams).promise();
+        items = await scanAllInvoices(queryParams);
         
         // Filter by search query
         let filteredItems = [];
         
-        for (const item of result.Items) {
+        for (const item of items) {
           let matches = false;
           const patientIdVal = item.patientId;
           const invoiceIdVal = item.invoiceId;
@@ -338,15 +368,15 @@ module.exports.handler = async (event) => {
           }
         }
         
-        result.Items = filteredItems;
+        items = filteredItems;
       } else {
-        result = await dynamodb.scan(queryParams).promise();
+        items = await scanAllInvoices(queryParams);
       }
       
-      // Sort by createdDateTime descending
-      const allItems = result.Items.sort((a, b) => 
-        new Date(b.createdDateTime).getTime() - new Date(a.createdDateTime).getTime()
-      );
+      // Sort by createdDateTime descending and return the latest requested records.
+      const offset = parseOffsetToken(lastEvaluatedKey);
+      const sortedItems = sortByCreatedDateTimeDesc(items);
+      const allItems = sortedItems.slice(offset, offset + pageLimit);
       
       // Fetch patient info for each invoice
       const enrichedItems = await Promise.all(
@@ -360,13 +390,12 @@ module.exports.handler = async (event) => {
         })
       );
       
-      // Build response with pagination info
       let response = {
         items: enrichedItems
       };
-      
-      if (result.LastEvaluatedKey) {
-        response.lastEvaluatedKey = Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString('base64');
+
+      if (offset + pageLimit < sortedItems.length) {
+        response.lastEvaluatedKey = createOffsetToken(offset + pageLimit);
       }
       
       return success(response);
